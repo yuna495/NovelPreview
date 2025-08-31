@@ -38,6 +38,21 @@
     "configuration": {
       "title": "Novel Preview",
       "properties": {
+        "novelPreview.backgroundColor": {
+          "type": "string",
+          "default": "#111111",
+          "markdownDescription": "プレビューの背景色（例: `#ffffff`, `black`, `rgb(30,30,30)` など）"
+        },
+        "novelPreview.textColor": {
+          "type": "string",
+          "default": "#fafafafa",
+          "markdownDescription": "本文のフォントカラー"
+        },
+        "novelPreview.activeLineBackground": {
+          "type": "string",
+          "default": "rgba(150, 100, 0, 0.1)",
+          "markdownDescription": "プレビュー側でハイライトされる行の背景色"
+        },
         "novelPreview.fontSize": {
           "type": "number",
           "default": 20,
@@ -45,15 +60,10 @@
           "maximum": 72,
           "markdownDescription": "本文のフォントサイズ（px）。既定: 20"
         },
-        "novelPreview.theme": {
-          "type": "string",
-          "enum": [
-            "followVSCode",
-            "light",
-            "dark"
-          ],
-          "default": "followVSCode",
-          "markdownDescription": "プレビューテーマ。`followVSCode` は VS Code の現在のカラーテーマに追随。"
+        "novelPreview.showCursor": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "プレビューにカーソル（縦線）を表示するか。false で非表示。"
         }
       }
     }

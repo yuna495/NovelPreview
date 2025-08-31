@@ -1,136 +1,122 @@
 // @ts-nocheck
 (function () {
-  /** @type {HTMLElement} */
-  const content = document.getElementById("content");
+  const vscode = acquireVsCodeApi();
 
-  /** @type {HTMLElement|null} */
+  const content = document.getElementById("content");
   let cursorEl = null;
   let blinkTimer = null;
 
-  // --- New: 上下ホイールで左右スクロール（縦方向→横方向にマッピング） ---
-  // 既定の（縦）スクロールは抑止し、deltaY を scrollLeft に加算する
+  // 縦ホイール → 横スクロール
   content.addEventListener(
     "wheel",
     (e) => {
-      // Ctrl+ホイール ＝ ズームの意図を尊重（ブラウザ既定動作）
       if (e.ctrlKey) return;
-
       const delta = normalizeWheelDelta(e);
-      // deltaY 正（下スクロール）なら右へ進める
-      content.scrollLeft += delta.y;
-
-      // トラックパッド横スワイプ（deltaX）が来た場合も加算（自然な感覚）
-      if (Math.abs(delta.x) > Math.abs(delta.y)) {
-        content.scrollLeft += delta.x;
-      }
-
-      // 既定の縦スクロールは無効化
+      content.scrollLeft +=
+        Math.abs(delta.x) > Math.abs(delta.y) ? delta.x : delta.y * 0.5;
       e.preventDefault();
     },
-    // preventDefault を有効にするため passive: false
     { passive: false }
   );
 
   function normalizeWheelDelta(e) {
-    // deltaMode: 0=Pixel, 1=Line, 2=Page
-    const LINE_PIXELS = 16; // おおむね 1 行 = 16px として扱う
+    const LINE_PIXELS = 16;
     const PAGE_PIXELS = content.clientHeight || window.innerHeight || 800;
-
-    const factor =
+    const f =
       e.deltaMode === 1 ? LINE_PIXELS : e.deltaMode === 2 ? PAGE_PIXELS : 1;
-
-    return {
-      x: e.deltaX * factor,
-      y: e.deltaY * factor,
-    };
+    return { x: e.deltaX * f, y: e.deltaY * f };
   }
-  // --- End of wheel mapping ---
 
-  // vscode からのメッセージを受け取る
+  // VS Code からのメッセージ（更新）
   window.addEventListener("message", (event) => {
     if (!event || !event.data) return;
     const { type, payload } = event.data;
-
-    if (type === "update") {
-      render(payload);
-    }
+    if (type === "update") render(payload);
   });
 
   /**
    * 描画処理
-   * @param {{text:string, offset:number, cursor:string, position:string, fontsize:string, fontfamily:string}} data
+   * @param {{
+   *   text:string, offset:number, cursor:string, position:string,
+   *   fontsize:string, fontfamily:string, activeLine:number, showCursor:boolean
+   * }} data
    */
   function render(data) {
-    const { text, offset, cursor, position, fontsize, fontfamily } = data;
+    content.style.backgroundColor = data.bgColor || "#111111";
+    content.style.color = data.textColor || "#fafafa";
+    content.style.setProperty(
+      "--active-bg",
+      data.activeBg || "rgba(255, 215, 0, 0.2)"
+    );
+    const {
+      text,
+      offset,
+      cursor,
+      position,
+      fontsize,
+      fontfamily,
+      activeLine,
+      showCursor,
+    } = data;
 
-    // パラグラフ化＋カーソル注入
-    const injected = injectCursor(text, offset, cursor);
-    const html = paragraphs(injected);
-
-    // 置換描画
+    // 段落化（data-line を付与）＋ カーソルは必要なときだけ注入
+    const html = paragraphsWithLine(text, offset, cursor, showCursor);
     content.innerHTML = html;
 
-    // 直後にスタイル反映（フォント系は CSS より inline 優先）
+    // フォント反映
     content.querySelectorAll("p").forEach((p) => {
       p.style.fontSize = fontsize || "14px";
       p.style.fontFamily = fontfamily ? `"${fontfamily}"` : "";
     });
 
-    cursorEl = document.getElementById("cursor");
+    // クリックでエディタへジャンプ
+    content.querySelectorAll("p").forEach((p) => {
+      p.addEventListener("click", () => {
+        const ln = Number(p.dataset.line || "0");
+        vscode.postMessage({ type: "jumpToLine", line: ln });
+      });
+    });
 
-    // カーソル点滅をリセット
-    resetBlink();
+    // カーソル取得（非表示設定なら null のまま）
+    cursorEl = showCursor ? document.getElementById("cursor") : null;
 
-    // スクロール位置
-    adjustScroll(position);
+    // カーソル点滅（非表示時はスキップ）
+    resetBlink(showCursor);
+
+    // エディタのカーソル行をハイライト＆中央表示
+    highlightActiveLine(activeLine);
+    adjustScrollToActive(activeLine);
   }
 
-  /**
-   * カーソルを埋め込む
-   * @param {string} text
-   * @param {number} offset
-   * @param {string} cursor
-   * @returns {string}
-   */
-  function injectCursor(text, offset, cursor) {
-    const off = Math.max(0, Math.min(offset, text.length));
-    return (
-      text.slice(0, off) +
-      '<span id="cursor">' +
-      escapeHtml(cursor) +
-      "</span>" +
-      text.slice(off)
-    );
-  }
+  /** data-line を付与した <p> 羅列を作る。showCursor=false のときは cursor 挿入しない */
+  function paragraphsWithLine(text, offset, cursor, showCursor) {
+    let injected = text;
+    if (showCursor) {
+      const safeCursor = '<span id="cursor">' + escapeHtml(cursor) + "</span>";
+      const off = Math.max(0, Math.min(offset, text.length));
+      injected = text.slice(0, off) + safeCursor + text.slice(off);
+    }
 
-  /**
-   * パラグラフ化
-   * - 空白行は不可視文字で高さ確保
-   * @param {string} textWithCursor
-   * @returns {string}
-   */
-  function paragraphs(textWithCursor) {
-    const lines = textWithCursor.split("\n");
+    const lines = injected.split("\n");
     const out = [];
-
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (!/^\s+$/.test(line) && line !== "") {
-        // 二重スペース置換は必要に応じて（ここでは何もしない or 微調整可）
-        out.push("<p>" + line + "</p>");
+        out.push('<p data-line="' + i + '">' + line + "</p>");
       } else {
-        out.push('<p class="blank">_</p>');
+        out.push('<p class="blank" data-line="' + i + '">_</p>');
       }
     }
     return out.join("");
   }
 
-  /** カーソル点滅 */
-  function resetBlink() {
-    if (!cursorEl) return;
+  function resetBlink(showCursor) {
     if (blinkTimer) {
       clearTimeout(blinkTimer);
       blinkTimer = null;
     }
+    if (!showCursor || !cursorEl) return;
+
     let visible = true;
     const tick = () => {
       if (!cursorEl) return;
@@ -141,71 +127,51 @@
     tick();
   }
 
-  /** スクロール調整 */
-  function adjustScroll(position) {
-    if (!content || !cursorEl) return;
+  function highlightActiveLine(activeLine) {
+    content
+      .querySelectorAll("p.active")
+      .forEach((el) => el.classList.remove("active"));
+    const target = content.querySelector('p[data-line="' + activeLine + '"]');
+    if (target) target.classList.add("active");
+  }
 
-    const rect = cursorEl.getBoundingClientRect();
+  // エディタのアクティブ行を常に中央へ
+  function adjustScrollToActive(activeLine) {
+    const target = content.querySelector('p[data-line="' + activeLine + '"]');
+    if (!target) return;
 
-    // 保存/復元（none, inner）
-    if (position !== "right" && position !== "center" && position !== "left") {
-      // 保存
-      let ticking = false;
-      content.addEventListener("scroll", () => {
-        if (!ticking) {
-          window.requestAnimationFrame(() => {
-            localStorage.setItem(
-              "vertical-preview.scrollLeft",
-              content.scrollLeft
-            );
-            ticking = false;
-          });
-          ticking = true;
-        }
-      });
+    const rect = target.getBoundingClientRect();
+    const viewportCenter = content.clientWidth / 2;
+    const targetCenter = rect.left + rect.width / 2;
+    const delta = targetCenter - viewportCenter;
 
-      // 復元
-      const prev = localStorage.getItem("vertical-preview.scrollLeft");
-      if (prev !== null) {
-        content.scrollLeft = +prev;
-      }
-    }
-
-    // カーソルへ寄せる
-    if (position === "right") {
-      const left = content.scrollLeft - -rect.left - content.clientWidth;
-      content.scrollLeft = left;
-    } else if (position === "center") {
-      const left =
-        content.scrollLeft -
-        -rect.left -
-        rect.width -
-        content.clientWidth +
-        window.innerWidth / 2;
-      content.scrollLeft = left;
-    } else if (position === "left") {
-      const left =
-        content.scrollLeft -
-        -rect.left -
-        rect.width * 3 -
-        content.clientWidth +
-        window.innerWidth;
-      content.scrollLeft = left;
-    } else if (position === "none") {
-      // 復元済み
-    } else {
-      // inner：可視範囲からはみ出すなら追従
-      let r = cursorEl.getBoundingClientRect();
-      if (r.left < r.width / 2) {
-        content.scrollLeft -= r.width - r.left;
-      }
-      if (r.left > content.clientWidth) {
-        content.scrollLeft += r.left - content.clientWidth;
-      }
+    if (Math.abs(delta) > 1) {
+      content.scrollLeft += delta;
     }
   }
 
-  /** HTML エスケープ（最低限） */
+  // ドキュメント <head> に単一の style を維持して p.active の見た目を上書き
+  function upsertDynamicStyle(activeBg) {
+    const ID = "np-dynamic-style";
+    let tag = document.getElementById(ID);
+    const css = `
+    /* ユーザー設定のハイライト色で背景＋アウトライン。!important で確実に上書き */
+    p.active {
+      background: ${activeBg} !important;
+      outline: 1px solid ${activeBg} !important;
+    }
+  `;
+    if (!tag) {
+      tag = document.createElement("style");
+      tag.id = ID;
+      tag.type = "text/css";
+      tag.textContent = css;
+      document.head.appendChild(tag);
+    } else {
+      tag.textContent = css;
+    }
+  }
+
   function escapeHtml(s) {
     return s
       .replaceAll("&", "&amp;")

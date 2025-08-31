@@ -26,7 +26,7 @@ function activate(context) {
     }),
     vscode.window.onDidChangeTextEditorSelection((e) => {
       if (e.textEditor === vscode.window.activeTextEditor) {
-        PreviewPanel.update();
+        PreviewPanel.update(); // カーソル行の変化も通知
       }
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
@@ -51,6 +51,7 @@ class PreviewPanel {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._editor = editor;
+    this._docUri = editor?.document?.uri;
     this._disposables = [];
     this._initialized = false;
 
@@ -64,10 +65,50 @@ class PreviewPanel {
       this._disposables
     );
 
+    // Webview -> Extension（プレビュークリックでエディタへジャンプ）
     this._panel.webview.onDidReceiveMessage(
-      (message) => {
-        if (message.command === "alert") {
-          vscode.window.showErrorMessage(message.text);
+      async (message) => {
+        if (!message) return;
+        if (message.type === "jumpToLine") {
+          const line = Number.isInteger(message.line) ? message.line : 0;
+
+          try {
+            const uri = this._docUri;
+            if (!uri) {
+              const active = vscode.window.activeTextEditor;
+              if (!active) return;
+              await focusEditorAndJump(active, line);
+              return;
+            }
+
+            // 既に開いている同一文書を探す（複製しない）
+            const opened = vscode.window.visibleTextEditors.find(
+              (e) => e.document?.uri?.toString() === uri.toString()
+            );
+
+            if (opened) {
+              const editor = await vscode.window.showTextDocument(
+                opened.document,
+                {
+                  viewColumn: opened.viewColumn,
+                  preserveFocus: false,
+                  preview: false,
+                }
+              );
+              await focusEditorAndJump(editor, line);
+            } else {
+              // 未オープン時のみ左側で開く
+              const doc = await vscode.workspace.openTextDocument(uri);
+              const editor = await vscode.window.showTextDocument(doc, {
+                viewColumn: vscode.ViewColumn.One,
+                preserveFocus: false,
+                preview: false,
+              });
+              await focusEditorAndJump(editor, line);
+            }
+          } catch (err) {
+            console.error("jumpToLine failed:", err);
+          }
         }
       },
       null,
@@ -125,28 +166,52 @@ class PreviewPanel {
 
     const editor = vscode.window.activeTextEditor;
     this._editor = editor;
+    this._docUri = editor?.document?.uri || this._docUri;
 
     const text = editor ? editor.document.getText() : "";
     const offset = editor
       ? editor.document.offsetAt(editor.selection.anchor)
       : 0;
+    const activeLine = editor ? editor.selection.active.line : 0;
 
+    // 設定
     const config = vscode.workspace.getConfiguration("novelPreview");
     const fontSizeNum = clampNumber(config.get("fontSize", 20), 8, 72);
     const fontsize = `${fontSizeNum}px`;
+    const showCursor = !!config.get("showCursor", false);
     const fontfamily = "";
 
+    const bgColor = config.get("backgroundColor", "#ffffff");
+    const textColor = config.get("textColor", "#000000");
+    const activeBg = config.get(
+      "activeLineBackground",
+      "rgba(255, 215, 0, 0.15)"
+    );
+    // カーソル表示有効時のみ利用
     const symbol = "|";
-    const position = "inner";
+    const position = showCursor ? "inner" : "none";
 
     if (!this._initialized || isFirst) {
       this._panel.webview.html = this._getHtmlForWebview();
       this._initialized = true;
     }
 
+    // webview へ差分データを送る
     this._panel.webview.postMessage({
       type: "update",
-      payload: { text, offset, cursor: symbol, position, fontsize, fontfamily },
+      payload: {
+        text,
+        offset,
+        cursor: symbol,
+        position,
+        fontsize,
+        fontfamily,
+        activeLine,
+        showCursor,
+        bgColor,
+        textColor,
+        activeBg,
+      },
     });
   }
 
@@ -173,6 +238,17 @@ class PreviewPanel {
 
     return html;
   }
+}
+
+async function focusEditorAndJump(editor, line) {
+  const doc = editor.document;
+  const clamped = Math.max(0, Math.min(line, doc.lineCount - 1));
+  const pos = new vscode.Position(clamped, 0);
+  editor.selection = new vscode.Selection(pos, pos);
+  editor.revealRange(
+    new vscode.Range(pos, pos),
+    vscode.TextEditorRevealType.InCenter
+  );
 }
 
 function getNonce() {
