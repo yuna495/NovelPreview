@@ -1,0 +1,35 @@
+/* media/style.css */
+:root {
+  --vw-padding: 5px;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+
+#content {
+  writing-mode: vertical-rl; /* 縦書き */
+  width: 100%;
+  margin: var(--vw-padding);
+  overflow: auto;
+  padding-top: 5em;
+  padding-bottom: 5em;
+}
+
+p {
+  /* フォントは JS からインラインで上書き（サイズ／ファミリ） */
+  margin: 0;
+  padding: 0;
+}
+
+p.blank {
+  color: rgba(0, 0, 0, 0); /* 透明（行の高さ確保用） */
+}
+
+/* カーソル */
+span#cursor {
+  display: inline-block;
+}

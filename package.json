@@ -1,8 +1,8 @@
 {
   "name": "novel-preview",
-  "displayName": "NovelPreview",
-  "description": "Vertical writing preview for .txt with user-defined rows (chars per vertical line) and cols (number of vertical lines).",
-  "version": "0.0.1",
+  "displayName": "Novel Preview",
+  "description": "日本語小説向けの簡易プレビュー（縦書き/横書き、選択行ハイライト、フォントサイズ/ライト・ダーク切替、VS Codeテーマ追随）。",
+  "version": "0.0.3",
   "publisher": "yuna495",
   "engines": {
     "vscode": "^1.90.0"
@@ -10,117 +10,57 @@
   "categories": [
     "Other"
   ],
+  "main": "./extension.js",
   "activationEvents": [
     "onLanguage:plaintext"
   ],
-  "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "novelPreview.open",
-        "title": "NovelPreview: 縦書きプレビューを開く"
-      },
-      {
-        "command": "novelPreview.configure",
-        "title": "NovelPreview: 行・列・書式を設定"
+        "title": "Novel Preview: プレビューを開く",
+        "icon": "$(book)"
       },
       {
         "command": "novelPreview.refresh",
-        "title": "NovelPreview: プレビューを再読込"
+        "title": "Novel Preview: 再描画"
       }
     ],
     "menus": {
       "editor/title": [
         {
           "command": "novelPreview.open",
-          "group": "navigation@9",
-          "when": "resourceExtname == .txt || editorLangId == plaintext"
-        }
-      ],
-      "commandPalette": [
-        {
-          "command": "novelPreview.open"
-        },
-        {
-          "command": "novelPreview.configure"
-        },
-        {
-          "command": "novelPreview.refresh"
+          "group": "navigation@100",
+          "when": "resourceExtname == .txt"
         }
       ]
     },
     "configuration": {
-      "title": "NovelPreview",
+      "title": "Novel Preview",
       "properties": {
-        "novelPreview.rows": {
-          "type": "number",
-          "default": 30,
-          "minimum": 5,
-          "description": "1 縦列に入れる最大文字数（縦方向の文字数、行）"
-        },
-        "novelPreview.cols": {
-          "type": "number",
-          "default": 20,
-          "minimum": 1,
-          "description": "縦の列（段）の本数（列）"
-        },
         "novelPreview.fontSize": {
           "type": "number",
-          "default": 18,
+          "default": 20,
           "minimum": 8,
-          "description": "フォントサイズ（px）"
+          "maximum": 72,
+          "markdownDescription": "本文のフォントサイズ（px）。既定: 20"
         },
-        "novelPreview.lineHeight": {
-          "type": "number",
-          "default": 24,
-          "minimum": 10,
-          "description": "行間（px、縦方向の 1 文字分の高さ）"
-        },
-        "novelPreview.columnGap": {
-          "type": "number",
-          "default": 24,
-          "minimum": 0,
-          "description": "列間（段間、px）"
-        },
-        "novelPreview.fontFamily": {
+        "novelPreview.theme": {
           "type": "string",
-          "default": "'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif",
-          "description": "フォントファミリ"
-        },
-        "novelPreview.background": {
-          "type": "string",
-          "default": "#f7f3e8",
-          "description": "紙面の背景色（例: #f7f3e8）"
-        },
-        "novelPreview.textColor": {
-          "type": "string",
-          "default": "#222",
-          "description": "本文の文字色"
+          "enum": [
+            "followVSCode",
+            "light",
+            "dark"
+          ],
+          "default": "followVSCode",
+          "markdownDescription": "プレビューテーマ。`followVSCode` は VS Code の現在のカラーテーマに追随。"
         }
       }
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
-    "watch": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch",
-    "test": "node ./out/test/runTest.js",
-    "package": "vsce package"
+    "vscode:prepublish": "echo \"no build (JS only)\"",
+    "package": "vsce package || echo 'Install @vscode/vsce if missing'"
   },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "@types/vscode": "^1.90.0",
-    "esbuild": "^0.21.5",
-    "typescript": "^5.6.2",
-    "vsce": "^2.15.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/yuna495/NovelPreview.git"
-  },
-  "bugs": {
-    "url": "https://github.com/yuna495/NovelPreview/issues"
-  },
-  "license": "MIT",
-  "homeNote": "https://github.com/yuna495/NovelPreview#readme"
+  "license": "MIT"
 }
